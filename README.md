@@ -2,12 +2,6 @@
 
 将 Nessus 扫描报告一键转换为中文 Excel（XLSX），方便导出、整理与分享。
 
-===================================
-Nessus Report 转中文工具
-作者: zhkali127
-代码地址: https://github.com/zhkali127/nessus-report-cn
-===================================
-
 功能特性
 - 支持读取 Nessus 报告文件并转换为中文表格
 - 输出格式为 Excel (XLSX)
