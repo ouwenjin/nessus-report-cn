@@ -1,20 +1,32 @@
 import pandas as pd
 import os
 import datetime
-import shutil
-from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+import pyfiglet
+
+console = Console()
 
 def show_author_info():
-    print("="*50)
-    print("Nessus Report 转中文工具")
-    print("作者: zhkali127")
-    print("代码地址: https://github.com/zhkali127/nessus-report-cn")
-    print("="*50)
+    print("="*60)
+    console.print("[bold cyan]Nessus Report 转中文工具[/bold cyan]")
 
-if __name__ == "__main__":
-    show_author_info()
+    # 大字显示作者（可换字体：slant, banner, block）
+    banner = pyfiglet.figlet_format("z h k a l i", font="slant")
+    console.print(Text(banner, style="bold magenta"))
+
+    console.print(
+        Panel.fit(
+            "[yellow]代码地址: https://github.com/zhkali127/nessus-report-cn[/yellow]",
+            title="作者信息",
+            border_style="green"
+        )
+    )
+    print("="*60)
+
 # ---------- 配置 ----------
 REFERENCE_FILE = 'Nessus中文报告.xlsx'  # 漏洞引用表
 RISK_MAPPING = {'Critical': '紧急', 'High': '高', 'Medium': '中', 'Low': '低', 'None': '无'}
@@ -79,7 +91,7 @@ def load_input_data(input_file):
 # ---------- 扫描结果 ----------
 def generate_scan_results(df_vulns, vuln_ref_dict):
     results=[]
-    for idx,row in df_vulns.iterrows():
+    for _,row in df_vulns.iterrows():
         plugin_id=str(row['Plugin ID'])
         ref=vuln_ref_dict.get(plugin_id,{})
         vuln_name=ref.get('中文名称',row['Name'])
@@ -90,8 +102,7 @@ def generate_scan_results(df_vulns, vuln_ref_dict):
                         description,solution,row['CVE'],row['Plugin Output']])
     df_results=pd.DataFrame(results,columns=['IP','端口','漏洞名称','风险等级',
                                              '漏洞说明','加固建议','CVE','扫描返回信息'])
-    # 重新生成序号列
-    df_results.insert(0, '序号', range(1, len(df_results)+1))
+    df_results.insert(0, '序号', range(1, len(df_results)+1))  # 序号列
     return df_results
 
 # ---------- 写Excel美化 ----------
@@ -126,11 +137,6 @@ def export_ip_list(unique_ips, df_vulns):
         df_stats.to_excel(writer, sheet_name='漏洞统计', index=False)
     print(f"IP 列表与漏洞统计输出：{ip_file}")
 
-"""
-nessus-中文报告转化
-
-迪普-zhkali127 2025.8.26
-"""
 # ---------- 缺失引用 ----------
 def export_missing_reference_examples(df_vulns,vuln_ref_dict,output_file='缺失示例.xlsx'):
     missing_mask=df_vulns['Plugin ID'].astype(str).apply(lambda x: x not in vuln_ref_dict)
@@ -164,10 +170,11 @@ def export_missing_reference_examples(df_vulns,vuln_ref_dict,output_file='缺失
 
 # ---------- 主流程 ----------
 def main():
+    show_author_info()
     df_merged, merged_file=merge_csv_files()
     if df_merged.empty: return
     xlsx_file=convert_csv_to_xlsx(merged_file)
-    vuln_ref_dict, ref_df=load_reference_vuln_table(REFERENCE_FILE)
+    vuln_ref_dict, _=load_reference_vuln_table(REFERENCE_FILE)
     if df_merged.empty: return
     df_vulns, unique_ips=load_input_data(xlsx_file)
     if df_vulns.empty:
@@ -180,20 +187,5 @@ def main():
     export_ip_list(unique_ips, df_vulns)
     export_missing_reference_examples(df_vulns, vuln_ref_dict)
 
-    # ---------- 新增：复制到上级目录/整理结果 并改名，只保留中高危 ----------
-    high_risk_df = results_df[results_df['风险等级'].isin(['紧急','高','中'])]
-    target_dir = os.path.join(os.path.dirname(os.getcwd()), "整理结果")
-    os.makedirs(target_dir, exist_ok=True)
-    target_file = os.path.join(target_dir, "中高危漏洞.xlsx")
-    write_scan_results_only(target_file, high_risk_df)
-    print(f"中高危漏洞已输出到：{target_file}")
-
 if __name__=='__main__':
     main()
-    
-"""
-nessus-中文报告转化
-
-迪普-zhkali127 2025.8.26
-
-"""
