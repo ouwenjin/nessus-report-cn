@@ -1,35 +1,162 @@
 import pandas as pd
 import os
 import datetime
+import shutil
+from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-from rich.console import Console
-from rich.panel import Panel
-from rich.text import Text
-import pyfiglet
-
-console = Console()
-
-def show_author_info():
-    print("="*60)
-    console.print("[bold cyan]Nessus Report 转中文工具[/bold cyan]")
-
-    # 大字显示作者（可换字体：slant, banner, block）
-    banner = pyfiglet.figlet_format("z h k a l i", font="slant")
-    console.print(Text(banner, style="bold magenta"))
-
-    console.print(
-        Panel.fit(
-            "[yellow]代码地址: https://github.com/zhkali127/nessus-report-cn[/yellow]",
-            title="作者信息",
-            border_style="green"
-        )
-    )
-    print("="*60)
+import sys
+import os
+import re
+import argparse
+import unicodedata
+import textwrap
 
 # ---------- 配置 ----------
 REFERENCE_FILE = 'Nessus中文报告.xlsx'  # 漏洞引用表
 RISK_MAPPING = {'Critical': '紧急', 'High': '高', 'Medium': '中', 'Low': '低', 'None': '无'}
+
+# 颜色定义
+ANSI = {
+    'reset': "\033[0m",
+    'bold': "\033[1m",
+    'cyan': "\033[36m",
+    'magenta': "\033[35m",
+    'green': "\033[32m",
+    'yellow': "\033[33m",
+}
+
+AUTHOR = 'zhkali'
+REPOS = [
+    'https://github.com/ouwenjin/nsfocus-report-extractor',
+    'https://gitee.com/zhkali/nsfocus-report-extractor'
+]
+
+# 用于去除 ANSI 控制码的正则
+_ansi_re = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
+
+def supports_color() -> bool:
+    """
+    简单检测终端是否支持 ANSI 颜色（Windows 上做了基础兼容判断）
+    """
+    if sys.platform.startswith('win'):
+        return os.getenv('ANSICON') is not None or 'WT_SESSION' in os.environ or sys.stdout.isatty()
+    return sys.stdout.isatty()
+
+_COLOR = supports_color()
+
+def strip_ansi(s: str) -> str:
+    """去掉 ANSI 控制码，用于准确计算可见长度"""
+    return _ansi_re.sub('', s)
+
+def visible_width(s: str) -> int:
+    """
+    计算字符串在终端中的可见列宽（考虑中文等宽字符为 2 列、组合字符为 0 列）。
+    传入字符串可以包含 ANSI 码，函数会先移除 ANSI 码再计算。
+    """
+    s2 = strip_ansi(s)
+    w = 0
+    for ch in s2:
+        # 跳过不可见的组合字符（比如重音组合符）
+        if unicodedata.combining(ch):
+            continue
+        ea = unicodedata.east_asian_width(ch)
+        # 'F' (Fullwidth), 'W' (Wide) 视作 2 列；其余视作 1 列
+        if ea in ('F', 'W'):
+            w += 2
+        else:
+            w += 1
+    return w
+
+def pad_visible(s: str, target_visible_len: int) -> str:
+    """
+    在带颜色字符串的右侧补空格，使其可见长度达到 target_visible_len。
+    空格为普通 ASCII 空格（宽度 1）。
+    """
+    cur = visible_width(s)
+    if cur >= target_visible_len:
+        return s
+    return s + ' ' * (target_visible_len - cur)
+
+def make_lines():
+    """返回未着色的行（保留艺术字的前导空格）"""
+    big_name = r"""
+   ███████╗██╗  ██╗██╗  ██╗ █████╗ ██╗      ██╗        
+   ╚══███╔╝██║  ██║██║ ██╔╝██╔══██╗██║      ██║        
+     ███╔╝ ███████║█████╔╝ ███████║██║      ██║        
+    ███╔╝  ██╔══██║██╔═██╗ ██╔══██║██║      ██║        
+   ███████╗██║  ██║██║  ██╗██║  ██║███████╗ ██║       
+   ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ ╚═╝        
+"""
+    art = textwrap.dedent(big_name)
+    art_lines = [ln.rstrip('\n') for ln in art.splitlines() if ln != '']
+    author_line = f"作者： {AUTHOR}"
+    repo1 = REPOS[0]
+    repo2 = REPOS[1]
+    return art_lines + [''] + [author_line, repo1, repo2]
+
+def print_banner(use_unicode: bool = True, outer_margin: int = 0, inner_pad: int = 1):
+    # 选择字符集
+    if use_unicode:
+        tl, tr, bl, br, hor, ver = '┌','┐','└','┘','─','│'
+    else:
+        tl, tr, bl, br, hor, ver = '+','+','+','+','-','|'
+
+    c_reset = ANSI.get('reset','')
+    c_bold = ANSI.get('bold','')
+    c_cyan = ANSI.get('cyan','')
+    c_green = ANSI.get('green','')
+    c_yellow = ANSI.get('yellow','')
+
+    raw_lines = make_lines()
+
+    # 着色（仅在支持颜色的终端）
+    colored = []
+    for ln in raw_lines:
+        if ln.startswith('作者'):
+            colored.append((c_bold + c_green + ln + c_reset) if _COLOR else ln)
+        elif ln.startswith('http'):
+            colored.append((c_yellow + ln + c_reset) if _COLOR else ln)
+        else:
+            if ln.strip() == '':
+                colored.append(ln)
+            else:
+                colored.append((c_bold + c_cyan + ln + c_reset) if _COLOR else ln)
+
+    # 计算可见最大宽度（使用 visible_width 来正确处理中文宽度）
+    content_max = max((visible_width(x) for x in colored), default=0)
+
+    # 预先把每行（带颜色的）右侧填充到 content_max（保证每行实际可见宽度相同）
+    padded_lines = [pad_visible(ln, content_max) for ln in colored]
+
+    # line_content = inner_pad + padded_line + inner_pad
+    total_inner = inner_pad * 2 + content_max
+    width = total_inner + 2  # 两侧竖线占 2
+
+    # 构造顶部与底部边框
+    top = tl + (hor * (width - 2)) + tr
+    bottom = bl + (hor * (width - 2)) + br
+
+    pad = ' ' * max(0, outer_margin)
+
+    # 打印顶部（统一颜色）
+    if _COLOR and use_unicode:
+        print(pad + (c_cyan + top + c_reset))
+    else:
+        print(pad + top)
+
+    # 打印所有内容行（左对齐：艺术字本身的前导空格会保留）
+    left_bar = (c_cyan + ver + c_reset) if _COLOR else ver
+    right_bar = (c_cyan + ver + c_reset) if _COLOR else ver
+    for pl in padded_lines:
+        line_content = (' ' * inner_pad) + pl + (' ' * inner_pad)
+        print(pad + left_bar + line_content + right_bar)
+
+    # 打印底部
+    if _COLOR and use_unicode:
+        print(pad + (c_cyan + bottom + c_reset))
+    else:
+        print(pad + bottom)
 
 # ---------- CSV处理 ----------
 def merge_csv_files():
@@ -56,7 +183,7 @@ def convert_csv_to_xlsx(csv_file):
     return xlsx_file
 
 # ---------- 引用表 ----------
-def load_reference_vuln_table(ref_file, sheet_name='漏洞引用表'):
+def load_reference_vuln_table(ref_file='Nessus中文报告.xlsx', sheet_name='漏洞引用表'):
     try:
         df_ref = pd.read_excel(ref_file, sheet_name=sheet_name, header=0)
         vuln_dict = {}
@@ -91,7 +218,7 @@ def load_input_data(input_file):
 # ---------- 扫描结果 ----------
 def generate_scan_results(df_vulns, vuln_ref_dict):
     results=[]
-    for _,row in df_vulns.iterrows():
+    for idx,row in df_vulns.iterrows():
         plugin_id=str(row['Plugin ID'])
         ref=vuln_ref_dict.get(plugin_id,{})
         vuln_name=ref.get('中文名称',row['Name'])
@@ -102,7 +229,8 @@ def generate_scan_results(df_vulns, vuln_ref_dict):
                         description,solution,row['CVE'],row['Plugin Output']])
     df_results=pd.DataFrame(results,columns=['IP','端口','漏洞名称','风险等级',
                                              '漏洞说明','加固建议','CVE','扫描返回信息'])
-    df_results.insert(0, '序号', range(1, len(df_results)+1))  # 序号列
+    # 重新生成序号列
+    df_results.insert(0, '序号', range(1, len(df_results)+1))
     return df_results
 
 # ---------- 写Excel美化 ----------
@@ -170,11 +298,20 @@ def export_missing_reference_examples(df_vulns,vuln_ref_dict,output_file='缺失
 
 # ---------- 主流程 ----------
 def main():
-    show_author_info()
+    parser = argparse.ArgumentParser(description='处理 Nessus 扫描结果，并打印作者横幅')
+    parser.add_argument('--no-unicode', dest='no_unicode', action='store_true',
+                        help='强制使用 ASCII 框（不使用 Unicode 盒绘字符）')
+    parser.add_argument('--margin', type=int, default=0, help='横幅左侧外边距空格数（默认 0）')
+    parser.add_argument('--pad', type=int, default=1, help='横幅内部左右边距（默认 1）')
+    args = parser.parse_args()
+
+    # 打印横幅
+    print_banner(use_unicode=not args.no_unicode, outer_margin=args.margin, inner_pad=max(0, args.pad))
+
     df_merged, merged_file=merge_csv_files()
     if df_merged.empty: return
     xlsx_file=convert_csv_to_xlsx(merged_file)
-    vuln_ref_dict, _=load_reference_vuln_table(REFERENCE_FILE)
+    vuln_ref_dict, ref_df=load_reference_vuln_table(REFERENCE_FILE)
     if df_merged.empty: return
     df_vulns, unique_ips=load_input_data(xlsx_file)
     if df_vulns.empty:
@@ -186,6 +323,14 @@ def main():
     write_scan_results_only(output_file, results_df)
     export_ip_list(unique_ips, df_vulns)
     export_missing_reference_examples(df_vulns, vuln_ref_dict)
+
+    # ---------- 新增：复制到上级目录/整理结果 并改名，只保留中高危 ----------
+    high_risk_df = results_df[results_df['风险等级'].isin(['紧急','高'])]
+    target_dir = os.path.join(os.path.dirname(os.getcwd()), "整理结果")
+    os.makedirs(target_dir, exist_ok=True)
+    target_file = os.path.join(target_dir, "中高危漏洞.xlsx")
+    write_scan_results_only(target_file, high_risk_df)
+    print(f"中高危漏洞已输出到：{target_file}")
 
 if __name__=='__main__':
     main()
