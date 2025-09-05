@@ -35,25 +35,6 @@
 
 ---
 
-## 要求
-
-* Python 3.8+
-* 推荐在虚拟环境中运行（venv / conda）。
-
-依赖（示例）：
-
-```
-pandas
-openpyxl
-```
-
-可将以下内容保存为 `requirements.txt`：
-
-```
-pandas>=1.3
-openpyxl>=3.0
-```
-
 ---
 
 ## 文件说明（默认/示例）
@@ -89,7 +70,7 @@ pip install -r requirements.txt
 直接运行：
 
 ```bash
-python nessus_processor.py
+python nessus.py
 ```
 
 脚本会按以下流程执行：
