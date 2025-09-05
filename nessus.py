@@ -324,13 +324,14 @@ def main():
     export_ip_list(unique_ips, df_vulns)
     export_missing_reference_examples(df_vulns, vuln_ref_dict)
 
-    # ---------- 新增：复制到上级目录/整理结果 并改名，只保留中高危 ----------
-    high_risk_df = results_df[results_df['风险等级'].isin(['紧急','高'])]
-    target_dir = os.path.join(os.path.dirname(os.getcwd()), "整理结果")
-    os.makedirs(target_dir, exist_ok=True)
-    target_file = os.path.join(target_dir, "中高危漏洞.xlsx")
-    write_scan_results_only(target_file, high_risk_df)
-    print(f"中高危漏洞已输出到：{target_file}")
+    # ---------- 新增：仅保留中高危并输出到当前目录，文件名固定为 中高危漏洞.xlsx ----------
+    high_risk_df = results_df[results_df['风险等级'].isin(['紧急','高','中'])]
+    target_file = os.path.join(os.getcwd(), "中高危漏洞.xlsx")
+    if high_risk_df.empty:
+        print("未找到中高危漏洞，未生成 中高危漏洞.xlsx")
+    else:
+        write_scan_results_only(target_file, high_risk_df)
+        print(f"中高危漏洞已输出到：{target_file}")
 
 if __name__=='__main__':
     main()
