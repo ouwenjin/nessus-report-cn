@@ -127,13 +127,6 @@ python nessus_processor.py
 
 ---
 
-
-## 许可证
-
-本项目建议采用 MIT 许可证（MIT）。
-
----
-
 ## 作者
 
 作者：`zhkali`
