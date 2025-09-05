@@ -1,6 +1,7 @@
 # Nessus CSV Processor — 漏洞扫描 CSV/XLSX 合并与报告导出工具
 
 > 一个用于处理 Nessus 导出的 CSV/XLSX 扫描结果的轻量化工具：合并多份 CSV、匹配漏洞引用表、导出美观的漏洞报告与 IP 列表，并生成“缺失引用”示例以便补全本地漏洞库。
+
  [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org)
 
 ---
